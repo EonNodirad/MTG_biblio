@@ -1,0 +1,51 @@
+node_modules/
+.env
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+*.pyc
+__pycache__/
+# Build outputs
+build/
+output/
+# IDEs
+*.idea
+*.vscode
+# Python
+*.venv/
+# Logs
+logs/
+# Cache
+.cache/
+# Docker
+.dockerignore
+Dockerfile
+# Tests
+pytest.ini
+# Coverage
+.coverage
+htmlcov/
+# Distribution
+dist/
+# Packages
+pkg/
+# Virtual environment
+venv/
+# Python backend
+backend/.venv/
+backend/data/
+backend/mtg_collection.db
+backend/mtgjson/__pycache__/
+# Configuration
+config/
+# Lock files
+*.lock
+# Editor backups
+*~
+# Temporary files
+*.tmp
+*.bak
+*.tmp
+*.log
