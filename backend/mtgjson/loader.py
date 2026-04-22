@@ -503,3 +503,19 @@ def list_sets() -> list[dict]:
 def get_prices(uuid: str) -> Optional[dict]:
     """Prices are not included in AllPrintings.sqlite."""
     return None
+
+
+def get_printings(name: str) -> list[dict]:
+    """Return all printings (editions) of a card by its English name, newest first."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT c.uuid, c.name, c.setCode, c.rarity, c.manaCost, "
+            "       i.scryfallId, s.name AS setName, s.releaseDate "
+            "FROM cards c "
+            "LEFT JOIN cardIdentifiers i ON c.uuid = i.uuid "
+            "LEFT JOIN sets s ON c.setCode = s.code "
+            "WHERE c.name = ? "
+            "ORDER BY s.releaseDate DESC",
+            (name,),
+        ).fetchall()
+        return [dict(r) for r in rows]

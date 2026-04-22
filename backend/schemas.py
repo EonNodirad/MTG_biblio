@@ -15,6 +15,7 @@ class CollectionEntryUpdate(BaseModel):
     quantity: Optional[int] = None
     foil: Optional[bool] = None
     condition: Optional[str] = None
+    card_uuid: Optional[str] = None
 
 
 class CollectionEntryOut(BaseModel):

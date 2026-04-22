@@ -46,6 +46,11 @@ def list_sets():
     return loader.list_sets()
 
 
+@router.get("/printings")
+def get_printings(name: str = Query(..., description="Exact English card name")):
+    return loader.get_printings(name)
+
+
 @router.get("/sets/{set_code}")
 def get_set(set_code: str):
     s = loader.get_set(set_code)

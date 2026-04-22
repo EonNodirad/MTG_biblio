@@ -21,7 +21,7 @@
 	let captureCanvas = $state<HTMLCanvasElement | null>(null);  // caché, pour capturer
 	let overlayCanvas = $state<HTMLCanvasElement | null>(null);  // visible, pour dessiner
 
-
+	let mode       = $state<'idle' | 'camera' | 'upload'>('idle');
 	let streaming  = $state(false);
 	let scanning   = $state(false);
 	let result     = $state<ScanResult | null>(null);
@@ -33,6 +33,12 @@
 	let animFrameId  = $state<number | null>(null);
 	let uuidHistory  = $state<string[]>([]);
 	const STABLE_FRAMES = 2;   // 2 frames stables suffisent
+
+	const cameraAvailable = $derived(
+		typeof navigator !== 'undefined' &&
+		!!navigator.mediaDevices?.getUserMedia &&
+		(location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+	);
 
 	const CONF_COLOR: Record<string, string> = {
 		high:   '#22c55e',
@@ -122,6 +128,7 @@
 
 	async function startCamera() {
 		error = null;
+		mode = 'camera';
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -130,14 +137,52 @@
 			videoEl.srcObject = stream;
 			await videoEl.play();
 			streaming = true;
-			// Attendre un tick pour que le navigateur ait rendu la vidéo
 			await new Promise(r => setTimeout(r, 100));
 			syncOverlaySize();
 			animFrameId = requestAnimationFrame(drawOverlay);
 			startScanning();
-		} catch {
-			error = "Impossible d'accéder à la caméra. Vérifie les permissions.";
+		} catch (e: any) {
+			mode = 'idle';
+			if (e?.name === 'NotAllowedError') {
+				error = "Permission caméra refusée. Autorise l'accès dans les réglages du navigateur.";
+			} else if (e?.name === 'NotFoundError') {
+				error = "Aucune caméra trouvée sur cet appareil.";
+			} else if (e?.name === 'NotReadableError') {
+				error = "La caméra est déjà utilisée par une autre application.";
+			} else if (!cameraAvailable) {
+				error = "La caméra nécessite HTTPS ou localhost. Utilise le mode upload à la place.";
+			} else {
+				error = `Erreur caméra : ${e?.message ?? e}`;
+			}
 		}
+	}
+
+	async function scanUploadedFile(file: File) {
+		error = null;
+		result = null;
+		mode = 'upload';
+		scanning = true;
+		try {
+			const form = new FormData();
+			form.append('file', file, file.name);
+			const res = await fetch('/api/scan/', { method: 'POST', body: form });
+			if (res.ok) {
+				const data: ScanResult = await res.json();
+				result = data;
+				scanCount++;
+			} else {
+				error = `Erreur serveur : ${res.status}`;
+			}
+		} catch (e: any) {
+			error = `Erreur : ${e?.message ?? e}`;
+		} finally {
+			scanning = false;
+		}
+	}
+
+	function onFileInput(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (file) scanUploadedFile(file);
 	}
 
 	function stopCamera() {
@@ -224,23 +269,37 @@
 		<span>Scanner</span>
 	</div>
 
-	<div class="flex items-center justify-between">
+	<div class="flex items-center justify-between flex-wrap gap-3">
 		<div>
 			<h1 class="text-2xl font-bold text-white">Scanner de cartes</h1>
-			<p class="text-sm text-gray-500 mt-1">Pointe la caméra vers une carte pour l'identifier automatiquement</p>
+			<p class="text-sm text-gray-500 mt-1">Identifie une carte par photo ou par caméra</p>
 		</div>
-		{#if !streaming}
-			<button onclick={startCamera}
-				class="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-xl text-sm transition-colors">
-				Activer la caméra
-			</button>
-		{:else}
-			<button onclick={stopCamera}
-				class="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl text-sm transition-colors">
-				Arrêter
-			</button>
-		{/if}
+		<div class="flex gap-2 flex-wrap">
+			{#if streaming}
+				<button onclick={stopCamera}
+					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl text-sm transition-colors">
+					Arrêter la caméra
+				</button>
+			{:else}
+				{#if cameraAvailable}
+					<button onclick={startCamera}
+						class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-xl text-sm transition-colors">
+						📷 Caméra en direct
+					</button>
+				{/if}
+				<label class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer">
+					🖼 Charger une photo
+					<input type="file" accept="image/*" capture="environment" class="hidden" onchange={onFileInput} />
+				</label>
+			{/if}
+		</div>
 	</div>
+
+	{#if !cameraAvailable && mode === 'idle'}
+		<div class="bg-yellow-900/30 border border-yellow-700 rounded-xl p-3 text-yellow-300 text-sm">
+			La caméra en direct nécessite HTTPS ou localhost. Utilise "Charger une photo" pour scanner.
+		</div>
+	{/if}
 
 	{#if error}
 		<div class="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>
@@ -248,13 +307,24 @@
 
 	<div class="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-6">
 
-		<!-- Flux vidéo + canvas overlay -->
+		<!-- Flux vidéo + canvas overlay (mode caméra) ou aperçu upload -->
 		<div
 			class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video flex items-center justify-center border border-gray-700">
 
-			{#if !streaming}
-				<div class="text-center space-y-3 text-gray-500">
-					<p class="text-sm">Clique sur "Activer la caméra" pour commencer</p>
+			{#if !streaming && mode !== 'upload'}
+				<div class="text-center space-y-3 text-gray-500 px-6">
+					{#if cameraAvailable}
+						<p class="text-sm">Clique sur "Caméra en direct" ou charge une photo</p>
+					{:else}
+						<p class="text-sm">Clique sur "Charger une photo" pour identifier une carte</p>
+					{/if}
+				</div>
+			{/if}
+
+			{#if mode === 'upload' && scanning}
+				<div class="text-center text-gray-400 space-y-2">
+					<div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+					<p class="text-sm">Analyse en cours…</p>
 				</div>
 			{/if}
 

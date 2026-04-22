@@ -189,9 +189,28 @@ export async function addToCollection(data: {
 	return res.json();
 }
 
+export interface CardPrinting {
+	uuid: string;
+	name: string;
+	setCode: string;
+	setName: string | null;
+	releaseDate: string | null;
+	rarity: string;
+	manaCost: string | null;
+	scryfallId: string | null;
+}
+
+export async function getPrintings(name: string): Promise<CardPrinting[]> {
+	const url = new URL(`${BASE}/cards/printings`, window.location.origin);
+	url.searchParams.set('name', name);
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(await res.text());
+	return res.json();
+}
+
 export async function updateCollectionEntry(
 	id: string,
-	data: { quantity?: number; foil?: boolean; condition?: string }
+	data: { quantity?: number; foil?: boolean; condition?: string; card_uuid?: string }
 ): Promise<CollectionEntry> {
 	const res = await fetch(`${BASE}/collection/${id}`, {
 		method: 'PATCH',
