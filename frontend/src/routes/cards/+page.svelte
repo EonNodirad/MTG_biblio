@@ -222,6 +222,18 @@
 	function pickSuggestion(s: CardSuggestion) {
 		query = s.foreignName ?? s.name;
 		showSuggestions = false;
+		// Clear filters so the suggestion's card is always found
+		selectedSet = '';
+		selectedType = '';
+		selectedColors = new Set();
+		selectedRarities = new Set();
+		textSearch = '';
+		cmcMin = null;
+		cmcMax = null;
+		selectedTypes = new Set();
+		subtypeSearch = '';
+		isLegendary = false;
+		selectedFormat = '';
 		search(query);
 	}
 

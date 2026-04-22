@@ -262,54 +262,65 @@
 
 <svelte:window onresize={syncOverlaySize} />
 
-<div class="max-w-5xl mx-auto space-y-6">
-	<div class="flex items-center gap-3 text-sm text-gray-500">
-		<a href="/" class="hover:text-white transition-colors">← Dashboard</a>
-		<span>/</span>
-		<span>Scanner</span>
+<div class="max-w-5xl mx-auto space-y-3 md:space-y-6 -mx-4 md:mx-auto px-0 md:px-0">
+
+	<!-- Header — masqué sur mobile quand la caméra tourne -->
+	<div class="px-4 md:px-0 {streaming ? 'hidden md:block' : ''}">
+		<div class="flex items-center gap-3 text-sm text-gray-500 mb-3">
+			<a href="/" class="hover:text-white transition-colors">← Dashboard</a>
+			<span>/</span>
+			<span>Scanner</span>
+		</div>
+		<div class="flex items-center justify-between flex-wrap gap-3">
+			<div>
+				<h1 class="text-2xl font-bold text-white">Scanner de cartes</h1>
+				<p class="text-sm text-gray-500 mt-1">Identifie une carte par photo ou par caméra</p>
+			</div>
+		</div>
 	</div>
 
-	<div class="flex items-center justify-between flex-wrap gap-3">
-		<div>
-			<h1 class="text-2xl font-bold text-white">Scanner de cartes</h1>
-			<p class="text-sm text-gray-500 mt-1">Identifie une carte par photo ou par caméra</p>
-		</div>
+	<!-- Boutons — toujours visibles -->
+	<div class="px-4 md:px-0 flex gap-2 flex-wrap items-center justify-between">
 		<div class="flex gap-2 flex-wrap">
 			{#if streaming}
 				<button onclick={stopCamera}
 					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl text-sm transition-colors">
-					Arrêter la caméra
+					⏹ Arrêter
 				</button>
 			{:else}
 				{#if cameraAvailable}
 					<button onclick={startCamera}
 						class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-xl text-sm transition-colors">
-						📷 Caméra en direct
+						📷 Caméra
 					</button>
 				{/if}
 				<label class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer">
-					🖼 Charger une photo
+					🖼 Photo
 					<input type="file" accept="image/*" capture="environment" class="hidden" onchange={onFileInput} />
 				</label>
 			{/if}
 		</div>
+		{#if streaming}
+			<span class="text-xs text-gray-500">Pointe vers une carte</span>
+		{/if}
 	</div>
 
 	{#if !cameraAvailable && mode === 'idle'}
-		<div class="bg-yellow-900/30 border border-yellow-700 rounded-xl p-3 text-yellow-300 text-sm">
-			La caméra en direct nécessite HTTPS ou localhost. Utilise "Charger une photo" pour scanner.
+		<div class="mx-4 md:mx-0 bg-yellow-900/30 border border-yellow-700 rounded-xl p-3 text-yellow-300 text-sm">
+			La caméra nécessite HTTPS. Accède via <strong>https://</strong> ou utilise le mode photo.
 		</div>
 	{/if}
 
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>
+		<div class="mx-4 md:mx-0 bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>
 	{/if}
 
-	<div class="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-6">
+	<div class="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-4 md:gap-6">
 
-		<!-- Flux vidéo + canvas overlay (mode caméra) ou aperçu upload -->
-		<div
-			class="relative bg-gray-900 rounded-2xl overflow-hidden aspect-video flex items-center justify-center border border-gray-700">
+		<!-- Flux vidéo + canvas overlay -->
+		<div class="relative bg-gray-900 md:rounded-2xl overflow-hidden
+			{streaming ? 'h-[70vw] max-h-[75vh] md:h-auto md:aspect-video' : 'aspect-[4/3] md:aspect-video mx-4 md:mx-0 rounded-2xl'}
+			flex items-center justify-center border-0 md:border md:border-gray-700">
 
 			{#if !streaming && mode !== 'upload'}
 				<div class="text-center space-y-3 text-gray-500 px-6">
@@ -359,28 +370,37 @@
 		</div>
 
 		<!-- Panneau résultat -->
-		<div class="space-y-4">
+		<div class="space-y-4 px-4 md:px-0">
 			{#if result && result.confidence !== 'none'}
-				<div class="bg-gray-800 border border-gray-700 rounded-2xl p-4 space-y-4">
-					<CardImage scryfallId={result.scryfall_id} alt={result.name ?? ''} size="normal"
-						class="w-full rounded-xl shadow-lg" />
-					<div>
-						<p class="font-bold text-white text-base">{result.name}</p>
-						<p class="text-xs text-gray-400 mt-0.5">{result.set_code} · {result.rarity}</p>
-						{#if result.mana_cost}
-							<div class="mt-1"><ManaCost cost={result.mana_cost} /></div>
-						{/if}
+				<!-- Mobile : layout horizontal (image + infos côte à côte) -->
+				<div class="bg-gray-800 border border-gray-700 rounded-2xl p-4">
+					<div class="flex gap-4 md:flex-col">
+						<CardImage scryfallId={result.scryfall_id} alt={result.name ?? ''} size="normal"
+							class="w-24 md:w-full rounded-xl shadow-lg shrink-0 self-start" />
+						<div class="flex-1 min-w-0 flex flex-col gap-3">
+							<div>
+								<p class="font-bold text-white text-base leading-tight">{result.name}</p>
+								<p class="text-xs text-gray-400 mt-0.5">{result.set_code} · {result.rarity}</p>
+								{#if result.mana_cost}
+									<div class="mt-1"><ManaCost cost={result.mana_cost} /></div>
+								{/if}
+								<p class="text-xs mt-1" style="color:{CONF_COLOR[result.confidence]}">
+									{CONF_LABEL[result.confidence]}
+								</p>
+							</div>
+							<button onclick={addCard} disabled={adding}
+								class="w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50
+									{result.confidence === 'high'
+										? 'bg-amber-500 hover:bg-amber-400 text-gray-950'
+										: 'bg-gray-700 hover:bg-gray-600 text-white'}">
+								{adding ? 'Ajout…' : '+ Ajouter à la collection'}
+							</button>
+						</div>
 					</div>
-					<button onclick={addCard} disabled={adding}
-						class="w-full py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50
-							{result.confidence === 'high'
-								? 'bg-amber-500 hover:bg-amber-400 text-gray-950'
-								: 'bg-gray-700 hover:bg-gray-600 text-white'}">
-						{adding ? 'Ajout…' : '+ Ajouter à la collection'}
-					</button>
 				</div>
 			{:else if streaming}
-				<div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center text-gray-500 space-y-2">
+				<!-- Rien à afficher sur mobile quand streaming sans résultat, le guide canvas suffit -->
+				<div class="hidden md:block bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center text-gray-500 space-y-2">
 					<p class="text-sm">Place une carte dans le champ de la caméra</p>
 					<p class="text-xs text-gray-600">Le contour de la carte s'affichera quand elle sera détectée</p>
 				</div>
