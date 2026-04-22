@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8090:8000"
+    volumes:
+      - ./backend/data:/app/data          # AllPrintings.sqlite + AllPrices.json.xz
+      - ./ml:/app/../ml                   # index.db du scanner
+      - ./backend/mtg_collection.db:/app/mtg_collection.db  # base de données utilisateur
+    environment:
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"

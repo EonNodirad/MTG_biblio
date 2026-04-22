@@ -14,36 +14,66 @@
 		collection_usd: number;
 		prices_loaded: boolean;
 		prices_file_age_days: number | null;
+		data_file_age_days: number | null;
 	}
+
+	import { toast } from '$lib/toast.svelte';
 
 	let stats = $state<Stats | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
-	let refreshMsg = $state<{ ok: boolean; text: string } | null>(null);
+	let refreshingData = $state(false);
+
+	let initializing = $state(false);
 
 	async function load() {
 		const res = await fetch(`${BASE}/stats/`);
+		if (res.status === 503) {
+			// Données MTGjson pas encore chargées — réessayer dans 3s
+			initializing = true;
+			setTimeout(load, 3000);
+			return;
+		}
+		initializing = false;
 		if (res.ok) stats = await res.json();
 		loading = false;
 	}
 
 	async function refreshPrices() {
 		refreshing = true;
-		refreshMsg = null;
+		toast.loading('Téléchargement des prix…');
 		try {
 			const res = await fetch(`${BASE}/stats/refresh-prices`, { method: 'POST' });
 			const data = await res.json();
 			if (data.success) {
-				refreshMsg = { ok: true, text: `Prix mis à jour — ${data.card_count?.toLocaleString('fr-FR')} cartes` };
+				toast.success(`Prix mis à jour — ${data.card_count?.toLocaleString('fr-FR')} cartes`);
 				await load();
 			} else {
-				refreshMsg = { ok: false, text: data.reason === 'no_internet' ? 'Pas de connexion internet' : 'Échec du téléchargement' };
+				toast.error(data.reason === 'no_internet' ? 'Pas de connexion internet' : 'Échec du téléchargement');
 			}
 		} catch {
-			refreshMsg = { ok: false, text: 'Erreur réseau' };
+			toast.error('Erreur réseau');
 		} finally {
 			refreshing = false;
-			setTimeout(() => (refreshMsg = null), 5000);
+		}
+	}
+
+	async function refreshData() {
+		refreshingData = true;
+		toast.loading('Mise à jour des données cartes…');
+		try {
+			const res = await fetch(`${BASE}/stats/refresh-data`, { method: 'POST' });
+			const data = await res.json();
+			if (data.success) {
+				toast.success('Données mises à jour — nouvelles extensions disponibles');
+				await load();
+			} else {
+				toast.error(data.reason === 'no_internet' ? 'Pas de connexion internet' : 'Échec de la mise à jour');
+			}
+		} catch {
+			toast.error('Erreur réseau');
+		} finally {
+			refreshingData = false;
 		}
 	}
 
@@ -93,7 +123,18 @@
 		</div>
 	</div>
 
-	{#if loading}
+	{#if initializing}
+		<div class="text-center py-16 space-y-3">
+			<div class="flex items-center justify-center gap-3 text-amber-400">
+				<svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+				</svg>
+				<span class="font-medium">Téléchargement des données MTGjson en cours…</span>
+			</div>
+			<p class="text-sm text-gray-500">Première utilisation : environ 5-10 minutes (~600 MB)</p>
+		</div>
+	{:else if loading}
 		<div class="text-center py-16 text-gray-400">Chargement...</div>
 	{:else if stats}
 
@@ -136,11 +177,11 @@
 			{/if}
 		</div>
 
-		<!-- Refresh feedback + manual refresh button -->
+		<!-- Refresh feedback + manual refresh buttons -->
 		<div class="flex items-center gap-3 flex-wrap">
 			{#if stats.prices_loaded}
 				<p class="text-xs text-gray-600">
-					Prix {stats.prices_file_age_days != null ? `mis à jour il y a ${Math.round(stats.prices_file_age_days)} jour(s)` : ''}
+					Prix {stats.prices_file_age_days != null ? `mis à jour il y a ${Math.round(stats.prices_file_age_days)} j` : ''}
 				</p>
 				<button
 					onclick={refreshPrices}
@@ -148,9 +189,15 @@
 					class="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 rounded-lg transition-colors"
 				>{refreshing ? 'Téléchargement…' : '↻ Rafraîchir les prix'}</button>
 			{/if}
-			{#if refreshMsg}
-				<span class="text-xs font-medium {refreshMsg.ok ? 'text-green-400' : 'text-red-400'}">{refreshMsg.text}</span>
-			{/if}
+			<p class="text-xs text-gray-600">
+				Données {stats.data_file_age_days != null ? `mises à jour il y a ${Math.round(stats.data_file_age_days)} j` : ''}
+			</p>
+			<button
+				onclick={refreshData}
+				disabled={refreshingData}
+				class="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 rounded-lg transition-colors"
+				title="Re-télécharge AllPrintings.sqlite depuis MTGjson (nouvelles extensions)"
+			>{refreshingData ? 'Téléchargement…' : '↻ Mettre à jour les données'}</button>
 		</div>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -8,6 +8,7 @@
 	import RarityBadge from '$lib/components/RarityBadge.svelte';
 	import CardImage from '$lib/components/CardImage.svelte';
 	import AddToCollectionModal from '$lib/components/AddToCollectionModal.svelte';
+	import { cardSearchSort as s } from '$lib/cardSearchSort.svelte';
 
 	let query = $state('');
 	let selectedSet = $state('');
@@ -226,6 +227,37 @@
 
 	function onBlur() {
 		setTimeout(() => (showSuggestions = false), 150);
+	}
+
+	const RARITY_ORDER: Record<string, number> = { common: 0, uncommon: 1, rare: 2, mythic: 3 };
+	const COLOR_ORDER = 'WUBRG';
+
+	const sortedResults = $derived.by(() => {
+		if (s.sortKey === 'none') return results;
+		return [...results].sort((a, b) => {
+			let cmp = 0;
+			if (s.sortKey === 'name') {
+				cmp = (a.matchedForeignName ?? a.name).localeCompare(b.matchedForeignName ?? b.name);
+			} else if (s.sortKey === 'cmc') {
+				cmp = (a.manaValue ?? 0) - (b.manaValue ?? 0);
+			} else if (s.sortKey === 'rarity') {
+				cmp = (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0);
+			} else if (s.sortKey === 'color') {
+				const ca = a.colors?.split(',')[0] ?? 'Z';
+				const cb = b.colors?.split(',')[0] ?? 'Z';
+				cmp = (COLOR_ORDER.indexOf(ca) + 1 || 99) - (COLOR_ORDER.indexOf(cb) + 1 || 99);
+			} else if (s.sortKey === 'set') {
+				cmp = a.setCode.localeCompare(b.setCode);
+			} else if (s.sortKey === 'price') {
+				cmp = (a.eur ?? -1) - (b.eur ?? -1);
+			}
+			return s.sortAsc ? cmp : -cmp;
+		});
+	});
+
+	function setSort(key: typeof s.sortKey) {
+		if (s.sortKey === key) s.sortAsc = !s.sortAsc;
+		else { s.sortKey = key; s.sortAsc = true; }
 	}
 
 	function showToast(msg: string) {
@@ -514,9 +546,18 @@
 	{:else if searched && results.length === 0}
 		<div class="text-center py-12 text-gray-400">Aucune carte trouvée.</div>
 	{:else if results.length > 0}
-		<p class="text-sm text-gray-500">{results.length} carte(s) trouvée(s)</p>
+		<div class="flex flex-wrap items-center gap-2">
+			<p class="text-sm text-gray-500 mr-2">{results.length} carte(s) trouvée(s)</p>
+			{#each [['none','Défaut'],['name','Nom'],['cmc','CMC'],['rarity','Rareté'],['color','Couleur'],['set','Set'],['price','Prix €']] as [key, label]}
+				<button onclick={() => setSort(key as any)}
+					class="text-xs px-2.5 py-1 rounded-full border transition-colors
+						{s.sortKey === key ? 'bg-amber-900/40 border-amber-500 text-amber-300' : 'bg-gray-800 border-gray-600 text-gray-500 hover:border-gray-500'}">
+					{label}{s.sortKey === key && key !== 'none' ? (s.sortAsc ? ' ↑' : ' ↓') : ''}
+				</button>
+			{/each}
+		</div>
 		<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-			{#each results as card (card.uuid)}
+			{#each sortedResults as card (card.uuid)}
 				<div class="group relative flex flex-col bg-gray-800 border border-gray-700 rounded-xl overflow-hidden hover:border-amber-500 transition-colors">
 					<!-- Card image -->
 					<a href="/cards/{card.uuid}" class="block">

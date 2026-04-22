@@ -37,7 +37,7 @@
 
 <div class="max-w-4xl mx-auto space-y-6">
 	<div class="flex items-center gap-3 text-sm text-gray-500">
-		<a href="/cards" class="hover:text-white transition-colors">← Retour</a>
+		<button onclick={() => history.back()} class="hover:text-white transition-colors">← Retour</button>
 		<span>/</span>
 		<span class="font-mono">{card.setCode}</span>
 	</div>

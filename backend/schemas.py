@@ -33,12 +33,14 @@ class DeckCreate(BaseModel):
     name: str
     description: str = ""
     format: str = ""
+    colors: str = ""
 
 
 class DeckUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     format: Optional[str] = None
+    colors: Optional[str] = None
 
 
 class DeckEntryCreate(BaseModel):
@@ -61,6 +63,7 @@ class DeckOut(BaseModel):
     name: str
     description: str
     format: str
+    colors: str = ""
     entries: list[DeckEntryOut] = []
 
     model_config = {"from_attributes": True}

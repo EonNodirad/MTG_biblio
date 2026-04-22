@@ -37,6 +37,7 @@ venv/
 backend/.venv/
 backend/data/
 backend/mtg_collection.db
+backend/collection.db
 backend/mtgjson/__pycache__/
 # Configuration
 config/
@@ -49,3 +50,4 @@ config/
 *.bak
 *.tmp
 *.log
+ml/__pycache__/

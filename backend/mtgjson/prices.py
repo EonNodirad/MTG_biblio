@@ -46,15 +46,21 @@ def has_internet() -> bool:
 
 def download_prices() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = PRICES_FILE.with_suffix(".tmp")
     logger.info("Downloading MTGjson AllPrices.json.xz …")
-    with httpx.Client(timeout=600, follow_redirects=True,
-                      headers={"User-Agent": "MTGCollectionManager/1.0"}) as client:
-        with client.stream("GET", PRICES_URL) as r:
-            r.raise_for_status()
-            with open(PRICES_FILE, "wb") as f:
-                for chunk in r.iter_bytes(chunk_size=1024 * 1024):
-                    f.write(chunk)
-    logger.info("Prices file saved to %s", PRICES_FILE)
+    try:
+        with httpx.Client(timeout=600, follow_redirects=True,
+                          headers={"User-Agent": "MTGCollectionManager/1.0"}) as client:
+            with client.stream("GET", PRICES_URL) as r:
+                r.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=1024 * 1024):
+                        f.write(chunk)
+        tmp.replace(PRICES_FILE)
+        logger.info("Prices file saved to %s", PRICES_FILE)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _latest(date_map: dict) -> Optional[float]:

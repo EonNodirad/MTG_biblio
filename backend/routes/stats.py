@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -5,6 +6,7 @@ from database import get_db
 from models import CollectionEntry, Deck
 from mtgjson import loader
 from mtgjson import prices as price_loader
+import card_scanner
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -99,6 +101,7 @@ def get_stats(db: Session = Depends(get_db)):
         'collection_usd': round(collection_usd, 2),
         'prices_loaded': price_loader.is_loaded(),
         'prices_file_age_days': price_loader.prices_file_age_days(),
+        'data_file_age_days': loader.loader_file_age_days(),
     }
 
 
@@ -109,4 +112,17 @@ async def refresh_prices():
         **result,
         "prices_loaded": price_loader.is_loaded(),
         "card_count": len(price_loader._prices),
+    }
+
+
+@router.post("/refresh-data")
+async def refresh_data():
+    result = await run_in_threadpool(loader.refresh_data)
+    if result.get("success"):
+        # Rebuild scanner index in background (incremental — new cards only)
+        asyncio.create_task(run_in_threadpool(card_scanner.rebuild_index_incremental))
+    return {
+        **result,
+        "data_loaded": loader.is_loaded(),
+        "data_file_age_days": loader.loader_file_age_days(),
     }

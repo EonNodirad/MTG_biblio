@@ -6,7 +6,10 @@ export interface CardSummary {
 	setCode: string;
 	type: string;
 	manaCost: string | null;
+	manaValue: number | null;
+	colors: string | null;
 	rarity: string;
+	eur: number | null;
 	scryfallId: string | null;
 	matchedForeignName: string | null;
 	matchedLanguage: string | null;
@@ -74,6 +77,7 @@ export interface Deck {
 	name: string;
 	description: string;
 	format: string;
+	colors: string;
 	entries: DeckEntry[];
 }
 
@@ -217,10 +221,26 @@ export async function listDecks(): Promise<Deck[]> {
 	return res.json();
 }
 
+export async function updateDeck(id: string, data: {
+	name?: string;
+	description?: string;
+	format?: string;
+	colors?: string;
+}): Promise<Deck> {
+	const res = await fetch(`${BASE}/decks/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return res.json();
+}
+
 export async function createDeck(data: {
 	name: string;
 	description?: string;
 	format?: string;
+	colors?: string;
 }): Promise<Deck> {
 	const res = await fetch(`${BASE}/decks/`, {
 		method: 'POST',
