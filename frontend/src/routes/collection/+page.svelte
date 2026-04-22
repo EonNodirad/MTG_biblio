@@ -8,6 +8,7 @@
 	import ManaCost from '$lib/components/ManaCost.svelte';
 	import CardImage from '$lib/components/CardImage.svelte';
 	import { collectionFilters as f } from '$lib/collectionFilters.svelte';
+	import EditionPicker from '$lib/components/EditionPicker.svelte';
 
 	type EnrichedEntry = CollectionEntry & { card?: CardDetail };
 
@@ -15,9 +16,10 @@
 	let entries        = $state<EnrichedEntry[]>([]);
 	let loading        = $state(true);
 	let toast          = $state<string | null>(null);
-	let missingSetCode = $state('');
-	let missingResult  = $state<any>(null);
-	let loadingMissing = $state(false);
+	let missingSetCode    = $state('');
+	let missingResult     = $state<any>(null);
+	let loadingMissing    = $state(false);
+	let editionEntry      = $state<EnrichedEntry | null>(null); // entry dont on change l'édition
 
 	// ── Constantes UI ─────────────────────────────────────────────────────────
 	const conditions = ['NM', 'LP', 'MP', 'HP', 'DMG'];
@@ -434,6 +436,11 @@
 							<button onclick={() => changeQty(entry, +1)}
 								class="w-6 h-6 rounded-full bg-gray-700 hover:bg-green-900 text-white text-sm font-bold flex items-center justify-center transition-colors">+</button>
 						</div>
+						<button onclick={() => (editionEntry = entry)}
+							class="w-full text-[10px] font-mono text-gray-500 hover:text-amber-400 transition-colors text-left truncate"
+							title="Changer l'édition">
+							{entry.card?.setCode ?? '—'} ✎
+						</button>
 					</div>
 				</div>
 			{/each}
@@ -458,7 +465,11 @@
 						</a>
 						{#if entry.card}
 							<div class="flex items-center gap-2 mt-0.5">
-								<span class="text-xs text-gray-500 font-mono">{entry.card.setCode}</span>
+								<button onclick={() => (editionEntry = entry)}
+									class="text-xs font-mono text-gray-500 hover:text-amber-400 transition-colors"
+									title="Changer l'édition">
+									{entry.card.setCode} ✎
+								</button>
 								<RarityBadge rarity={entry.card.rarity} />
 								<ManaCost cost={entry.card.manaCost} />
 							</div>
@@ -527,6 +538,17 @@
 		{/if}
 	</div>
 </div>
+
+{#if editionEntry}
+	<EditionPicker
+		entry={editionEntry}
+		onchange={(updated) => {
+			entries = entries.map(e => e.id === updated.id ? updated : e);
+			showToast('Édition mise à jour.');
+		}}
+		onclose={() => (editionEntry = null)}
+	/>
+{/if}
 
 {#if toast}
 	<div class="fixed bottom-6 right-6 bg-gray-700 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium">
