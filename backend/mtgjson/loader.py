@@ -35,6 +35,8 @@ _suggest_index: list[tuple[str, dict]] = []
 def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(DB_FILE)
     c.row_factory = sqlite3.Row
+    # SQLite LOWER() is ASCII-only; this handles accented characters (é→é, É→é, etc.)
+    c.create_function("PYLOWER", 1, lambda s: s.casefold() if s else s)
     return c
 
 
@@ -298,7 +300,7 @@ def search_cards(
     offset: int = 0,
 ) -> list[dict]:
     """Search cards by name (English + all translations) with optional filters."""
-    q = f"%{query.lower()}%" if query else None
+    q = f"%{query.casefold()}%" if query else None
 
     cond_parts: list[str] = []
     cond_params: list = []
@@ -307,28 +309,28 @@ def search_cards(
         cond_parts.append("c.setCode = ?")
         cond_params.append(set_code.upper())
     if card_type:
-        cond_parts.append("LOWER(c.type) LIKE ?")
-        cond_params.append(f"%{card_type.lower()}%")
+        cond_parts.append("PYLOWER(c.type) LIKE ?")
+        cond_params.append(f"%{card_type.casefold()}%")
     if text_search:
-        q_text = f"%{text_search.lower()}%"
+        q_text = f"%{text_search.casefold()}%"
         cond_parts.append(
-            "(LOWER(COALESCE(c.text,'')) LIKE ? "
+            "(PYLOWER(COALESCE(c.text,'')) LIKE ? "
             "OR EXISTS (SELECT 1 FROM cardForeignData fd "
-            "WHERE fd.uuid = c.uuid AND LOWER(COALESCE(fd.text,'')) LIKE ?))"
+            "WHERE fd.uuid = c.uuid AND PYLOWER(COALESCE(fd.text,'')) LIKE ?))"
         )
         cond_params.extend([q_text, q_text])
     if card_types:
         types_list = [t.strip() for t in card_types.split(",") if t.strip()]
         if types_list:
-            sub = " OR ".join("LOWER(c.type) LIKE ?" for _ in types_list)
+            sub = " OR ".join("PYLOWER(c.type) LIKE ?" for _ in types_list)
             cond_parts.append(f"({sub})")
-            cond_params.extend(f"%{t.lower()}%" for t in types_list)
+            cond_params.extend(f"%{t.casefold()}%" for t in types_list)
     if subtype:
-        cond_parts.append("LOWER(COALESCE(c.subtypes,'')) LIKE ?")
-        cond_params.append(f"%{subtype.lower()}%")
+        cond_parts.append("PYLOWER(COALESCE(c.subtypes,'')) LIKE ?")
+        cond_params.append(f"%{subtype.casefold()}%")
     if supertype:
-        cond_parts.append("LOWER(COALESCE(c.supertypes,'')) LIKE ?")
-        cond_params.append(f"%{supertype.lower()}%")
+        cond_parts.append("PYLOWER(COALESCE(c.supertypes,'')) LIKE ?")
+        cond_params.append(f"%{supertype.casefold()}%")
     if format_legality and format_legality.lower() in _VALID_FORMATS:
         fmt = format_legality.lower()
         cond_parts.append(
@@ -381,7 +383,7 @@ def search_cards(
         en_where = base_where
         en_params = list(cond_params)
         if q:
-            en_where = (base_where + " AND " if base_where else "WHERE ") + "LOWER(c.name) LIKE ?"
+            en_where = (base_where + " AND " if base_where else "WHERE ") + "PYLOWER(c.name) LIKE ?"
             en_params.append(q)
 
         sql_en = (
@@ -398,7 +400,7 @@ def search_cards(
         # --- Foreign name search (only when a query is given) ---
         if q and len(results) < sql_limit:
             fd_limit = sql_limit - len(results)
-            fd_where = (base_where + " AND " if base_where else "WHERE ") + "LOWER(f.name) LIKE ?"
+            fd_where = (base_where + " AND " if base_where else "WHERE ") + "PYLOWER(f.name) LIKE ?"
             fd_params = list(cond_params) + [q]
             sql_fd = (
                 "SELECT c.uuid, c.name, c.setCode, c.type, c.manaCost, c.manaValue, c.colors, c.rarity, "

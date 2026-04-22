@@ -7,6 +7,7 @@ services:
       - ./backend/data:/app/data          # AllPrintings.sqlite + AllPrices.json.xz
       - ./ml:/app/../ml                   # index.db du scanner
       - ./backend/mtg_collection.db:/app/mtg_collection.db  # base de données utilisateur
+      - ./backend/ssl:/app/ssl            # certificat SSL auto-signé (persistant)
     environment:
       - PYTHONUNBUFFERED=1
     deploy:
