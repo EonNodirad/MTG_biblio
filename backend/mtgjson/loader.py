@@ -9,6 +9,7 @@ except a lightweight name index used for autocomplete suggestions.
 import json
 import logging
 import sqlite3
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_FILE  = DATA_DIR / "AllPrintings.sqlite"
+DATA_MAX_AGE_DAYS = 7
 MTGJSON_URL = "https://mtgjson.com/api/v5/AllPrintings.sqlite"
 
 # Lightweight in-memory suggest index built at startup:
@@ -66,15 +68,21 @@ def _row_to_card(row: sqlite3.Row) -> dict:
 
 def download_data() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = DB_FILE.with_suffix(".tmp")
     logger.info("Downloading MTGjson AllPrintings.sqlite (~500 MB)…")
-    with httpx.Client(timeout=600, follow_redirects=True,
-                      headers={"User-Agent": "MTGCollectionManager/1.0"}) as client:
-        with client.stream("GET", MTGJSON_URL) as r:
-            r.raise_for_status()
-            with open(DB_FILE, "wb") as f:
-                for chunk in r.iter_bytes(chunk_size=1024 * 1024):
-                    f.write(chunk)
-    logger.info("SQLite saved to %s", DB_FILE)
+    try:
+        with httpx.Client(timeout=600, follow_redirects=True,
+                          headers={"User-Agent": "MTGCollectionManager/1.0"}) as client:
+            with client.stream("GET", MTGJSON_URL) as r:
+                r.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=1024 * 1024):
+                        f.write(chunk)
+        tmp.replace(DB_FILE)  # atomic rename — l'ancien fichier reste lisible jusqu'au bout
+        logger.info("SQLite saved to %s", DB_FILE)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _ensure_indexes() -> None:
@@ -127,12 +135,67 @@ def _build_suggest_index() -> None:
     logger.info("Suggest index: %d entries", len(_suggest_index))
 
 
-def load_data() -> None:
+def loader_file_age_days() -> Optional[float]:
     if not DB_FILE.exists():
-        download_data()
+        return None
+    return (time.time() - DB_FILE.stat().st_mtime) / 86400
+
+
+def has_internet() -> bool:
+    try:
+        httpx.get("https://mtgjson.com", timeout=5, follow_redirects=True)
+        return True
+    except Exception:
+        return False
+
+
+def _is_valid() -> bool:
+    """Check that the SQLite file is a real AllPrintings DB (has the cards table)."""
+    try:
+        with _conn() as c:
+            c.execute("SELECT 1 FROM cards LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+
+def load_data() -> None:
+    age = loader_file_age_days()
+    needs_download = age is None
+
+    if not needs_download and not _is_valid():
+        logger.warning("AllPrintings.sqlite is corrupted — re-downloading…")
+        DB_FILE.unlink(missing_ok=True)
+        needs_download = True
+
+    if needs_download or age is not None and age > DATA_MAX_AGE_DAYS:
+        if needs_download:
+            logger.info("AllPrintings.sqlite missing or corrupted — downloading…")
+        else:
+            logger.info("AllPrintings.sqlite is %.1f days old — refreshing…", age)
+        if has_internet():
+            DB_FILE.unlink(missing_ok=True)
+            download_data()
+        elif needs_download:
+            logger.warning("AllPrintings.sqlite unavailable and no internet — card data unavailable")
+            return
+        else:
+            logger.warning("AllPrintings.sqlite is stale but no internet — using existing file")
+
     _ensure_indexes()
     _build_suggest_index()
     logger.info("MTGjson SQLite ready.")
+
+
+def refresh_data() -> dict:
+    """Force re-download and rebuild of AllPrintings.sqlite."""
+    if not has_internet():
+        return {"success": False, "reason": "no_internet"}
+    DB_FILE.unlink(missing_ok=True)
+    download_data()
+    _ensure_indexes()
+    _build_suggest_index()
+    return {"success": True}
 
 
 def is_loaded() -> bool:
@@ -199,6 +262,8 @@ def _card_summary(row: sqlite3.Row,
         "setCode":            row["setCode"],
         "type":               row["type"],
         "manaCost":           row["manaCost"],
+        "manaValue":          row["manaValue"],
+        "colors":             row["colors"],
         "rarity":             row["rarity"],
         "scryfallId":         row["scryfallId"],
         "matchedForeignName": matched_foreign,
@@ -320,7 +385,7 @@ def search_cards(
             en_params.append(q)
 
         sql_en = (
-            "SELECT c.uuid, c.name, c.setCode, c.type, c.manaCost, c.rarity, i.scryfallId "
+            "SELECT c.uuid, c.name, c.setCode, c.type, c.manaCost, c.manaValue, c.colors, c.rarity, i.scryfallId "
             "FROM cards c LEFT JOIN cardIdentifiers i ON c.uuid = i.uuid "
             f"{en_where} "
             f"LIMIT {sql_limit}"
@@ -336,7 +401,7 @@ def search_cards(
             fd_where = (base_where + " AND " if base_where else "WHERE ") + "LOWER(f.name) LIKE ?"
             fd_params = list(cond_params) + [q]
             sql_fd = (
-                "SELECT c.uuid, c.name, c.setCode, c.type, c.manaCost, c.rarity, "
+                "SELECT c.uuid, c.name, c.setCode, c.type, c.manaCost, c.manaValue, c.colors, c.rarity, "
                 "       i.scryfallId, f.name AS fName, f.language AS fLang "
                 "FROM cardForeignData f "
                 "JOIN cards c ON f.uuid = c.uuid "
@@ -349,7 +414,17 @@ def search_cards(
                     seen.add(row["uuid"])
                     results.append(_card_summary(row, row["fName"], row["fLang"]))
 
-    return results[offset: offset + limit]
+    page = results[offset: offset + limit]
+
+    # Attach EUR price (best-effort, no extra SQL round-trip)
+    from mtgjson import prices as price_loader  # lazy import to avoid circular
+    uuids = [r["uuid"] for r in page]
+    bulk_prices = price_loader.get_prices_bulk(uuids)
+    for r in page:
+        p = bulk_prices.get(r["uuid"])
+        r["eur"] = p["eur"] if p else None
+
+    return page
 
 
 def suggest_cards(query: str, limit: int = 10) -> list[dict]:

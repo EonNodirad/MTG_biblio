@@ -24,7 +24,8 @@ class Deck(Base):
     id = Column(String, primary_key=True, default=new_uuid)
     name = Column(String, nullable=False)
     description = Column(Text, default="")
-    format = Column(String, default="")  # standard, modern, commander...
+    format = Column(String, default="")
+    colors = Column(String, default="")  # ex: "W,U,B,R,G" comma-separated
 
     entries = relationship("DeckEntry", back_populates="deck", cascade="all, delete-orphan")
 

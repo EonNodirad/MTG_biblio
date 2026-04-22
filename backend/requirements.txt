@@ -3,3 +3,7 @@ uvicorn[standard]
 sqlalchemy
 httpx
 python-multipart
+numpy
+opencv-python-headless
+ImageHash
+Pillow

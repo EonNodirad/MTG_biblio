@@ -21,6 +21,20 @@ def list_collection(db: Session = Depends(get_db)):
 def add_card(entry: CollectionEntryCreate, db: Session = Depends(get_db)):
     if not loader.get_card(entry.card_uuid):
         raise HTTPException(status_code=404, detail="Card UUID not found in MTGjson data")
+
+    # Même carte + même foil + même état → on incrémente la quantité
+    existing = db.query(CollectionEntry).filter(
+        CollectionEntry.card_uuid == entry.card_uuid,
+        CollectionEntry.foil      == (entry.foil or False),
+        CollectionEntry.condition == (entry.condition or "NM"),
+    ).first()
+
+    if existing:
+        existing.quantity += entry.quantity or 1
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     db_entry = CollectionEntry(**entry.model_dump())
     db.add(db_entry)
     db.commit()
